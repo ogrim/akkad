@@ -13,7 +13,7 @@
 (defdb db dbspec)
 
 (def user-agent-fake "Opera/9.80 (Windows NT 6.1; WOW64; U; en) Presto/2.10.229 Version/11.62")
-(def user-agent "Akkad 0.0.1-SNAPSHOT (Clojure 1.3.0 CLI lookup tool)")
+(def user-agent "akkad 0.0.1-SNAPSHOT (Clojure 1.3.0 CLI lookup tool)")
 
 (defn create-tables []
   (do
@@ -57,4 +57,4 @@
   (let [query (select websites (where {:url url}))]
     (if (empty? query)
       (do (persist-page url) (get-page url))
-      query)))
+      (read-string (:html (first query))))))
