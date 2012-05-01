@@ -20,6 +20,7 @@
     (sql/create-table "websites"
                     [:url :text "PRIMARY KEY"]
                     [:html :text]
+                    [:status :int]
                     [:timestamp :datetime])
     (sql/do-commands "CREATE INDEX idx_websites ON websites(url)")))
 
@@ -34,27 +35,30 @@
 (defentity websites
   (pk :url)
   (table :websites)
-  (entity-fields :url :html :timestamp))
+  (entity-fields :url :html :status :timestamp))
 
 (defn page-exists? [url]
   (if (seq (select websites (where {:url url}))) true false))
 
 (defn fetch-page [url]
-  (-> (http/get url {:headers {"User-Agent" user-agent}})
-      :body
-      StringReader.
-      html/html-resource))
+  (let [resource (http/get url {:headers {"User-Agent" user-agent}
+                                :throw-exceptions false})]
+    {:nodes (-> resource :body StringReader. html/html-resource)
+     :status (:status resource)}))
 
 (defn persist-page [url]
-  (insert websites (values {:url url
-                            :html (apply str (fetch-page url))
-                            :timestamp (timestamp) })))
+  (let [{:keys [nodes status]} (fetch-page url)]
+   (insert websites (values {:url url
+                             :html (apply str nodes)
+                             :status status
+                             :timestamp (timestamp)}))))
 
 (defn delete-page [url]
   (delete websites (where {:url url})))
 
 (defn get-page [url]
-  (let [query (select websites (where {:url url}))]
+  (let [[query] (select websites (where {:url url}))]
     (if (empty? query)
       (do (persist-page url) (get-page url))
-      (read-string (:html (first query))))))
+      {:html (read-string (:html query))
+       :status (:status query)})))
