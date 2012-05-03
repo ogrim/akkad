@@ -65,6 +65,20 @@
     (cond (nil? handlers) {:error (str "No handler for status " status " - URL was: " query-url)}
           :else {:blocks (->> (e/select html selector) (map #(parse-block % parser)) enumerate-blocks)})))
 
+;; (def s1 (get data-sources :mw-di))
+;; (def q1 ((:query-fn s1) "thesis"))
+;; (def h1 (db/get-page q1))
+;; (def html1 (:html h1))
+;; (def status1 (:status h1))
+;; (def handlers1 (get s1 :200))
+;; (def sel1 (:selector handlers1))
+;; (def par1 (:parser handlers1))
+
+;; (def z1 (e/select html1 sel1))
+
+
+
+
 ; (query :1881 "Person name")
 ; (query :mw-di "Militate")
 ; (query :mw-th "Query")
