@@ -2,20 +2,16 @@
   (:require [net.cgrand.moustache :as m]
             [net.cgrand.enlive-html :as e]
             [akkad.database :as db])
-  (:use [ring.adapter.jetty]
+  (:use [akkad.tools]
+        [ring.adapter.jetty]
         [ring.middleware resource reload file params]
         [ring.util.response]
         [ring.util.codec :only [url-encode]])
+  (:import [de.l3s.boilerpipe.extractors KeepEverythingExtractor])
   (:gen-class :main true))
 
-;; (def mw-di {:url "http://www.merriam-webster.com/dictionary/militate" :parser di-fn})
-;; (def mw-th {:url "http://www.merriam-webster.com/thesaurus/imitate" :parser th-fn})
-
-(defn select-blocks [url selector]
-  (e/select (:html (db/get-page url)) selector))
-
-(defn extract [nodes selector]
-  (-> (e/select nodes selector) first :content first))
+(defn extract-content [s]
+  (.. KeepEverythingExtractor INSTANCE (getText s)))
 
 (defn tlf-process [s]
   (->> (re-seq #"[0-9]+" s)
@@ -25,22 +21,8 @@
        (map #(apply str %))
        (apply str)))
 
-(comment (e/select
-  (db/get-page "http://www.merriam-webster.com/dictionary/query")
-  [:div#mwEntryData]))
-
-(e/select
- (db/get-page "http://www.merriam-webster.com/dictionary/query")
- [:div#mwEntryData :span.main-fl :em])
-
-(e/select
- (db/get-page "http://www.merriam-webster.com/dictionary/query")
- [:div#mwEntryData :h2])
-
-
 (def data-sources
   {:1881 {:name "1881.no"
-          :url "http://www.1881.no/?query=aleksander&type=person"
           :query-fn #(str "http://www.1881.no/?query=" (url-encode %) "&type=person")
           :200 {:selector [:div#content_main :div.listing]
                 :parser {:name {:selector [:h3 :a]}
@@ -48,49 +30,40 @@
                          :addr {:selector [:p.listing_address :span]}}}}
    :mw-di {:name "Merriam-Webster Dictionary"
            :query-fn #(str "http://www.merriam-webster.com/dictionary/" (url-encode %))
-           :selector []
-           :parser {}
+           :200 {:selector [:div.KonaBody [:div.sblk]]
+                 :parser {:headline {:selector [:span.ssens]
+                                     :postprocess #(->> % e/emit* (apply str) extract-content strip-newlines .trim)}
+                          }}
            :404 {:selector [:div.spelling-help :ol :li :a]
                  :parser {:alternatives {:postprocess #(-> % :content first)}}
                  }}
    :mw-th {:name "Merriam-Webster Thesaurus"
            :query-fn #(str "http://www.merriam-webster.com/thesaurus/" (url-encode %))
-           :202 {}
-           :404 {}}})
+;           :200 {}
+           :404 {:selector [:div.spelling-help :ol :li :a]
+                 :parser {:alternatives {:postprocess #(-> % :content first)}}}}})
 
-
-
-(defn process-page [url]
-  (let [{nodes :html status :status} (db/get-page url)]
-    (if (= status 404) (e/select nodes [:div.spelling-help :ol :li :a]))))
+(defn extract [nodes selector]
+  (-> (e/select nodes selector) first :content first))
 
 (defn parse-block [block parser]
   (->> (for [[key {:keys [selector postprocess]}] parser]
          (cond (nil? postprocess) {key (extract block selector)}
                (nil? selector) {key (postprocess block)}
-               :else {key (-> (extract block selector) postprocess)}))
+               :else {key (-> (e/select block selector) postprocess)}))
        (into {})))
 
-(for [[key {:keys [selector postprocess]}] parser1] [key selector postprocess])
-
-(def parser1 (:parser (:404 (:mw-di data-sources))))
-(def block1 (query :mw-di "thesiis"))
-
-
-
-(defn parse-page [url selector parser]
-  (let [blocks (select-blocks url selector)]
-    (->> (map #(hash-map %2 (parse-block %1 parser)) blocks (range 1 (inc (count blocks))))
-         (into (sorted-map)))))
-
+(defn enumerate-blocks [blocks]
+  (->> (map #(hash-map %2 %1) blocks (->> blocks count inc (range 1)))
+       (into (sorted-map))))
 
 (defn query [source-key query-string]
   (let [source (get data-sources source-key)
-        {:keys [html status]} (db/get-page ((:query-fn source) query-string))
+        query-url ((:query-fn source) query-string)
+        {:keys [html status]} (db/get-page query-url)
         {:keys [selector parser] :as handlers} (get source (keyword (str status)))]
-    (cond (nil? handlers) {:error (str "No handlers for status " status)}
-          :else (->> (e/select html selector) (map #(parse-block % parser)))
-          )))
+    (cond (nil? handlers) {:error (str "No handler for status " status " - URL was: " query-url)}
+          :else {:blocks (->> (e/select html selector) (map #(parse-block % parser)) enumerate-blocks)})))
 
 ; (query :1881 "Person name")
 ; (query :mw-di "Militate")

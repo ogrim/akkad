@@ -7,4 +7,7 @@
                  [org.clojure/java.jdbc "0.1.3"]
                  [korma "0.3.0-beta10"]
                  [org.xerial/sqlite-jdbc "3.7.2"]
-                 [clj-http "0.3.6"]])
+                 [clj-http "0.3.6"]
+                 [de.l3s.boilerpipe/boilerpipe "1.1.0"]
+                 [xerces/xercesImpl "2.4.0"]
+                 [net.sourceforge.nekohtml/nekohtml "1.9.15"]])
